@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Log Analyzer | AIOps Project</title>
+  <meta name="description" content="Upload your log file and let AI detect anomalies using Isolation Forest — a final-year AIOps engineering project." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #08090c;
+      --surface: #111318;
+      --border: rgba(255,255,255,0.08);
+      --text: #e8eaf0;
+      --muted: #7a8099;
+      --accent: #6c63ff;
+      --accent-glow: rgba(108,99,255,0.35);
+      --green: #22c55e;
+      --yellow: #f59e0b;
+      --red: #ef4444;
+      --cyan: #22d3ee;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ── */
+    header {
+      padding: 1.5rem 2rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(135deg, rgba(108,99,255,0.08), transparent);
+    }
+    header .logo { font-size: 1.6rem; }
+    header h1 { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.02em; }
+    header span { color: var(--accent); }
+    .badge {
+      margin-left: auto;
+      background: rgba(108,99,255,0.2);
+      color: var(--accent);
+      border: 1px solid rgba(108,99,255,0.4);
+      padding: 0.25rem 0.75rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    /* ── Main ── */
+    main { flex: 1; max-width: 860px; margin: 0 auto; padding: 3rem 1.5rem; width: 100%; }
+
+    .hero-text { text-align: center; margin-bottom: 2.5rem; }
+    .hero-text h2 {
+      font-size: clamp(1.75rem, 4vw, 2.5rem);
+      font-weight: 800;
+      background: linear-gradient(135deg, #fff 40%, var(--accent));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      line-height: 1.2;
+      margin-bottom: 0.75rem;
+    }
+    .hero-text p { color: var(--muted); font-size: 1rem; }
+
+    /* ── Upload Card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      padding: 2rem;
+      margin-bottom: 2rem;
+      transition: border-color 0.3s;
+    }
+    .card:hover { border-color: rgba(108,99,255,0.3); }
+
+    .drop-zone {
+      border: 2px dashed rgba(108,99,255,0.35);
+      border-radius: 0.75rem;
+      padding: 2.5rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s;
+      position: relative;
+    }
+    .drop-zone:hover, .drop-zone.drag-over {
+      border-color: var(--accent);
+      background: rgba(108,99,255,0.07);
+    }
+    .drop-zone input[type="file"] {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      opacity: 0; cursor: pointer;
+    }
+    .drop-icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
+    .drop-label { font-weight: 600; font-size: 1.05rem; color: var(--text); }
+    .drop-hint { color: var(--muted); font-size: 0.85rem; margin-top: 0.4rem; }
+    #file-name {
+      margin-top: 1rem;
+      font-size: 0.85rem;
+      color: var(--cyan);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .btn {
+      width: 100%;
+      margin-top: 1.5rem;
+      padding: 0.9rem 1.5rem;
+      background: var(--accent);
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 700;
+      border: none;
+      border-radius: 0.6rem;
+      cursor: pointer;
+      transition: all 0.25s;
+      box-shadow: 0 0 20px var(--accent-glow);
+    }
+    .btn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 0 35px var(--accent-glow);
+    }
+    .btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+
+    /* ── Spinner ── */
+    .spinner-wrap {
+      display: none;
+      text-align: center;
+      padding: 1.5rem;
+    }
+    .spinner {
+      width: 40px; height: 40px;
+      border: 3px solid rgba(108,99,255,0.2);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 0.75rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner-wrap p { color: var(--muted); font-size: 0.9rem; }
+
+    /* ── Results ── */
+    #results { display: none; }
+
+    .verdict {
+      border-radius: 0.75rem;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1.5rem;
+      font-size: 1.1rem;
+      font-weight: 700;
+      border-left: 4px solid;
+    }
+    .verdict.NORMAL  { background: rgba(34,197,94,0.1);  border-color: var(--green); color: var(--green); }
+    .verdict.WARNING { background: rgba(245,158,11,0.1); border-color: var(--yellow); color: var(--yellow); }
+    .verdict.CRITICAL{ background: rgba(239,68,68,0.12); border-color: var(--red);   color: var(--red); }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .stat {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      padding: 1rem 1.25rem;
+      text-align: center;
+    }
+    .stat .value { font-size: 2rem; font-weight: 800; font-family: 'JetBrains Mono', monospace; }
+    .stat .label { font-size: 0.78rem; color: var(--muted); margin-top: 0.25rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat.green .value { color: var(--green); }
+    .stat.yellow .value { color: var(--yellow); }
+    .stat.red .value { color: var(--red); }
+    .stat.purple .value { color: var(--accent); }
+
+    .anomaly-list h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 0.75rem; color: var(--muted); }
+    .log-line {
+      background: rgba(239,68,68,0.06);
+      border: 1px solid rgba(239,68,68,0.2);
+      border-radius: 0.5rem;
+      padding: 0.5rem 0.75rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.78rem;
+      color: #fca5a5;
+      margin-bottom: 0.4rem;
+      word-break: break-word;
+    }
+
+    .method-tag {
+      display: inline-block;
+      background: rgba(34,211,238,0.1);
+      color: var(--cyan);
+      border: 1px solid rgba(34,211,238,0.25);
+      padding: 0.2rem 0.6rem;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-family: 'JetBrains Mono', monospace;
+      margin-bottom: 1rem;
+    }
+
+    /* ── How It Works ── */
+    .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; }
+    .step {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      padding: 1.25rem;
+    }
+    .step-num {
+      width: 32px; height: 32px;
+      background: rgba(108,99,255,0.2);
+      color: var(--accent);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 0.85rem;
+      margin-bottom: 0.6rem;
+    }
+    .step h4 { font-size: 0.9rem; font-weight: 600; margin-bottom: 0.3rem; }
+    .step p { font-size: 0.8rem; color: var(--muted); line-height: 1.5; }
+
+    /* ── Error ── */
+    .error-box {
+      background: rgba(239,68,68,0.1);
+      border: 1px solid rgba(239,68,68,0.3);
+      border-radius: 0.6rem;
+      padding: 1rem 1.25rem;
+      color: #fca5a5;
+      font-size: 0.9rem;
+    }
+
+    footer {
+      text-align: center;
+      padding: 1.5rem;
+      color: var(--muted);
+      font-size: 0.8rem;
+      border-top: 1px solid var(--border);
+    }
+    footer a { color: var(--accent); text-decoration: none; }
+  </style>
+</head>
+<body>
+
+<header>
+  <span class="logo">🔭</span>
+  <h1>AI <span>Log</span> Analyzer</h1>
+</header>
+
+<main>
+  <div class="hero-text">
+    <h2>Detect Anomalies in Your Logs with AI</h2>
+    <p>Upload a <code>.log</code> file — Isolation Forest ML model analyzes it instantly and flags anomalies.</p>
+  </div>
+
+  <!-- Upload Card -->
+  <div class="card">
+    <form id="upload-form" enctype="multipart/form-data">
+      <div class="drop-zone" id="drop-zone">
+        <input type="file" name="logfile" id="logfile" accept=".log,.txt" />
+        <div class="drop-icon">📂</div>
+        <div class="drop-label">Drop your log file here, or click to browse</div>
+        <div class="drop-hint">Supported: .log, .txt files up to 5MB</div>
+        <div id="file-name"></div>
+      </div>
+      <button class="btn" type="submit" id="analyze-btn" disabled>
+        🔍 Analyze Logs
+      </button>
+    </form>
+    <div class="spinner-wrap" id="spinner">
+      <div class="spinner"></div>
+      <p>Running AI anomaly detection…</p>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div id="results">
+    <div id="verdict-box" class="verdict"></div>
+    <div id="method-tag" class="method-tag"></div>
+    <div class="stats-grid">
+      <div class="stat green"><div class="value" id="stat-info">—</div><div class="label">INFO logs</div></div>
+      <div class="stat yellow"><div class="value" id="stat-warn">—</div><div class="label">WARNING logs</div></div>
+      <div class="stat red"><div class="value" id="stat-err">—</div><div class="label">ERROR logs</div></div>
+      <div class="stat purple"><div class="value" id="stat-anom">—</div><div class="label">Anomaly Windows</div></div>
+      <div class="stat"><div class="value" id="stat-total">—</div><div class="label">Total Logs</div></div>
+      <div class="stat red"><div class="value" id="stat-ratio">—</div><div class="label">Anomaly Rate</div></div>
+    </div>
+    <div class="anomaly-list card" id="anomaly-list" style="display:none;">
+      <h3>🚨 Sample Anomalous Log Lines</h3>
+      <div id="anomaly-lines"></div>
+    </div>
+  </div>
+
+  <!-- How It Works -->
+  <div class="card" style="margin-top:2rem;">
+    <h3 style="margin-bottom:1rem;font-size:1rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;">⚙️ How It Works</h3>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <h4>Upload Log File</h4>
+        <p>Upload any standard-format .log or .txt file from your application.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <h4>Feature Extraction</h4>
+        <p>Logs are grouped into windows. ERROR/WARNING counts & ratios are extracted as features.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <h4>Isolation Forest AI</h4>
+        <p>An unsupervised ML model learns "normal" patterns and flags statistical outliers.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <h4>Verdict & Alerts</h4>
+        <p>Results are categorized as NORMAL, WARNING, or CRITICAL with anomaly rate.</p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  🔭 AI Log Analyzer &mdash; Powered by Isolation Forest &amp; Flask &nbsp;|&nbsp;
+  Intelligent anomaly detection for modern systems
+</footer>
+
+<script>
+  const dropZone = document.getElementById('drop-zone');
+  const fileInput = document.getElementById('logfile');
+  const analyzeBtn = document.getElementById('analyze-btn');
+  const fileNameEl = document.getElementById('file-name');
+  const form = document.getElementById('upload-form');
+  const spinner = document.getElementById('spinner');
+  const results = document.getElementById('results');
+
+  // Show file name when selected
+  fileInput.addEventListener('change', () => {
+    const f = fileInput.files[0];
+    if (f) {
+      fileNameEl.textContent = `📄 ${f.name} (${(f.size/1024).toFixed(1)} KB)`;
+      analyzeBtn.disabled = false;
+    }
+  });
+
+  // Drag & drop visual feedback
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    fileInput.files = e.dataTransfer.files;
+    fileInput.dispatchEvent(new Event('change'));
+  });
+
+  // Form submit
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!fileInput.files[0]) return;
+
+    // Show spinner, hide results
+    spinner.style.display = 'block';
+    results.style.display = 'none';
+    analyzeBtn.disabled = true;
+
+    const formData = new FormData();
+    formData.append('logfile', fileInput.files[0]);
+
+    try {
+      const res = await fetch('/analyze', { method: 'POST', body: formData });
+      const data = await res.json();
+      spinner.style.display = 'none';
+      analyzeBtn.disabled = false;
+
+      if (data.error) {
+        results.style.display = 'block';
+        results.innerHTML = `<div class="error-box">❌ ${data.error}</div>`;
+        return;
+      }
+
+      displayResults(data);
+    } catch (err) {
+      spinner.style.display = 'none';
+      analyzeBtn.disabled = false;
+      results.style.display = 'block';
+      results.innerHTML = `<div class="error-box">❌ Network error: ${err.message}</div>`;
+    }
+  });
+
+  function displayResults(d) {
+    results.style.display = 'block';
+
+    // Reset results div to original template (in case of previous render)
+    results.innerHTML = `
+      <div id="verdict-box" class="verdict ${d.verdict}">${d.verdict_msg}</div>
+      <div id="method-tag" class="method-tag">🤖 Detection Method: ${d.method === 'isolation_forest' ? 'Isolation Forest (AI)' : 'Keyword Matching (Fallback)'}</div>
+      <div class="stats-grid">
+        <div class="stat green"><div class="value">${d.infos}</div><div class="label">INFO logs</div></div>
+        <div class="stat yellow"><div class="value">${d.warnings}</div><div class="label">WARNING logs</div></div>
+        <div class="stat red"><div class="value">${d.errors}</div><div class="label">ERROR logs</div></div>
+        <div class="stat purple"><div class="value">${d.anomaly_windows}</div><div class="label">Anomaly Windows</div></div>
+        <div class="stat"><div class="value">${d.total}</div><div class="label">Total Logs</div></div>
+        <div class="stat red"><div class="value">${d.anomaly_ratio}%</div><div class="label">Anomaly Rate</div></div>
+      </div>
+      ${d.sample_anomalies && d.sample_anomalies.length > 0 ? `
+      <div class="anomaly-list card">
+        <h3>🚨 Sample Anomalous Log Lines</h3>
+        ${d.sample_anomalies.map(l => `<div class="log-line">${escHtml(l)}</div>`).join('')}
+      </div>` : ''}
+    `;
+
+    results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function escHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+</script>
+</body>
+</html>
